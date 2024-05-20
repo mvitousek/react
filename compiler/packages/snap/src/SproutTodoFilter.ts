@@ -493,6 +493,7 @@ const skipFilter = new Set([
 
   // 'react-compiler-runtime' not yet supported
   "flag-enable-emit-hook-guards",
+  "useState-pruned-dependency-change-detect",
 ]);
 
 export default skipFilter;

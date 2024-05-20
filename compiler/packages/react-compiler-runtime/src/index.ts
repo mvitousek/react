@@ -251,3 +251,84 @@ export function useRenderCounter(name: string): void {
     };
   });
 }
+
+export function $structuralCheck(oldValue: any, newValue: any, variableName: string, fnName: string): void {
+  const depthLimit = 2;
+  function recur(oldValue: any, newValue: any, depth: number) {
+    if (depth > depthLimit) {
+      return;
+    } else if (oldValue === newValue) {
+      return;
+    } else if (typeof oldValue !== typeof newValue) {
+      throw new Error(
+        `${variableName} changed type from ${typeof oldValue} to ${typeof newValue} in ${fnName}`
+      );
+    } else if (typeof oldValue === "object") {
+      if (oldValue == null) {
+        throw new Error(
+          `${variableName} changed type from null to ${typeof newValue} in ${fnName}`
+        );
+      }
+      if (newValue == null) {
+        throw new Error(
+          `${variableName} changed type from ${typeof oldValue} to null in ${fnName}`
+        );
+      }
+      const oldArray = Array.isArray(oldValue);
+      const newArray = Array.isArray(newValue);
+      if (oldArray || newArray) {
+        if (oldArray !== newArray) {
+          throw new Error(
+            `${variableName} changed type from ${oldArray ? "array" : "object"} to ${
+              newArray ? "array" : "object"
+            } in ${fnName}`
+          );
+        } else if (oldValue.length !== newValue.length) {
+          throw new Error(
+            `${variableName} changed length from ${oldValue.length} to ${newValue.length} in ${fnName}`
+          );
+        } else {
+          for (let ii = 0; ii < oldValue.length; ii++) {
+            recur(oldValue[ii], newValue[ii], depth + 1);
+          }
+        }
+      } else if (React.isValidElement(oldValue) || React.isValidElement(newValue)) {
+        if (React.isValidElement(oldValue) !== React.isValidElement(newValue)) {
+          throw new Error(
+            `${variableName} changed type from ${
+              React.isValidElement(oldValue) ? "element" : "object"
+            } to ${React.isValidElement(newValue) ? "element" : "object"} in ${fnName}`
+          );
+        } else if (oldValue.type !== newValue.type) {
+          throw new Error(
+            `${variableName} changed type from ${oldValue.type} to ${newValue.type} in ${fnName}`
+          );
+        } else {
+          recur(oldValue.props, newValue.props, depth + 1);
+        }
+      } else {
+        for (const key in oldValue) {
+          recur(oldValue[key], newValue[key], depth + 1);
+        }
+      }
+    } else if (typeof oldValue === "function") {
+      // Bail on functions for now
+      return;
+    } else if (isNaN(oldValue) || isNaN(newValue)) {
+      if (isNaN(oldValue) !== isNaN(newValue)) {
+        throw new Error(
+          `${variableName} changed type from ${isNaN(oldValue) ? "NaN" : "number"} to ${
+            isNaN(newValue) ? "NaN" : "number"
+          } in ${fnName}`
+        );
+      } else {
+        return;
+      }
+    } else if (oldValue !== newValue) {
+      throw new Error(
+        `${variableName} changed from ${oldValue} to ${newValue} in ${fnName}`
+      );
+    }
+  }
+  recur(oldValue, newValue, 0);
+}

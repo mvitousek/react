@@ -45,6 +45,7 @@ function makePluginOptions(
   let validatePreserveExistingMemoizationGuarantees = false;
   let enablePreserveExistingManualUseMemo = false;
   let disableMemoizationForDebugging = false;
+  let enableChangeDetectionForDebugging = null;
 
   if (firstLine.indexOf("@compilationMode(annotation)") !== -1) {
     assert(
@@ -128,6 +129,12 @@ function makePluginOptions(
   if (firstLine.includes("@disableMemoizationForDebugging")) {
     disableMemoizationForDebugging = true;
   }
+  if (firstLine.includes("@enableChangeDetectionForDebugging")) {
+    enableChangeDetectionForDebugging = {
+      source: "react-compiler-runtime",
+      importSpecifierName: "$structuralCheck",
+    };
+  }
   const hookPatternMatch = /@hookPattern:"([^"]+)"/.exec(firstLine);
   if (
     hookPatternMatch &&
@@ -181,7 +188,8 @@ function makePluginOptions(
       hookPattern,
       validatePreserveExistingMemoizationGuarantees,
       enablePreserveExistingManualUseMemo,
-      disableMemoizationForDebugging
+      disableMemoizationForDebugging,
+      enableChangeDetectionForDebugging,
     },
     compilationMode,
     logger: null,
