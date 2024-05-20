@@ -69,6 +69,7 @@ const LazyGuardDispatcher: { [key: string]: (...args: Array<any>) => any } = {};
   "useCacheRefresh",
 ].forEach((name) => {
   LazyGuardDispatcher[name] = () => {
+    $setBailedOut(true);
     throw new Error(
       `[React] Unexpected React hook call (${name}) from a React Forget compiled function. ` +
         "Check that all hooks are called directly and named according to convention ('use[A-Z]') "
@@ -150,6 +151,7 @@ export function $dispatcherGuard(kind: GuardKind) {
     }
 
     if (curr === LazyGuardDispatcher) {
+      $setBailedOut(true);
       throw new Error(
         `[React] Unexpected call to custom hook or component from a React Forget compiled function. ` +
           "Check that (1) all hooks are called directly and named according to convention ('use[A-Z]') " +
@@ -331,4 +333,14 @@ export function $structuralCheck(oldValue: any, newValue: any, variableName: str
     }
   }
   recur(oldValue, newValue, 0);
+}
+
+let bailedOut: boolean = false;
+
+export function $setBailedOut(bailed: boolean) {
+  bailedOut = bailed;
+}
+
+export function $isBailedOut(): boolean {
+  return bailedOut;
 }

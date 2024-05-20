@@ -494,6 +494,8 @@ const skipFilter = new Set([
   // 'react-compiler-runtime' not yet supported
   "flag-enable-emit-hook-guards",
   "useState-pruned-dependency-change-detect",
+  "runtime-bailout",
+  "runtime-bailout-hook",
 ]);
 
 export default skipFilter;

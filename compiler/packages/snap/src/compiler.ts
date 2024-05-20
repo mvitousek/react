@@ -114,6 +114,21 @@ function makePluginOptions(
     flowSuppressions = true;
   }
 
+  let enableRuntimeBailouts = null;
+  if (firstLine.includes("@enableRuntimeBailouts")) {
+    enableRuntimeBailouts = {
+      isBailedOut : {
+      source: "react-compiler-runtime",
+      importSpecifierName: "$isBailedOut",
+      },
+      setBailedOut : {
+        source: "react-compiler-runtime",
+        importSpecifierName: "$setBailedOut",
+        },
+    };
+  }
+
+
   let ignoreUseNoForget: boolean = false;
   if (firstLine.includes("@ignoreUseNoForget")) {
     ignoreUseNoForget = true;
@@ -190,6 +205,7 @@ function makePluginOptions(
       enablePreserveExistingManualUseMemo,
       disableMemoizationForDebugging,
       enableChangeDetectionForDebugging,
+      enableRuntimeBailouts,
     },
     compilationMode,
     logger: null,

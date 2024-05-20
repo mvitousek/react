@@ -387,6 +387,15 @@ const EnvironmentConfigSchema = z.object({
    * and identifiers have been changed.
    */
   hookPattern: z.string().nullable().default(null),
+  /*
+   * Emit code that looks for a runtime-set bailout.
+   */
+  enableRuntimeBailouts: z
+    .object({
+      isBailedOut: ExternalFunctionSchema,
+      setBailedOut: ExternalFunctionSchema,
+    })
+    .nullish(),
 });
 
 export type EnvironmentConfig = z.infer<typeof EnvironmentConfigSchema>;

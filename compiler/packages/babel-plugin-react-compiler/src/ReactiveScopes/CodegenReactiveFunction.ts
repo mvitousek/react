@@ -104,20 +104,20 @@ export function codegenFunction(
   }
   const compiled = compileResult.unwrap();
 
-  const hookGuard = fn.env.config.enableEmitHookGuards;
-  if (hookGuard != null) {
-    compiled.body = t.blockStatement([
-      createHookGuard(
-        hookGuard,
-        compiled.body.body,
-        GuardKind.PushHookGuard,
-        GuardKind.PopHookGuard
-      ),
-    ]);
-  }
+  const isHook = fn.id != null && fn.id.substring(0, 3) == "use";
 
+  compiled.body.body = createBodyWrapper(compiled.body.body, cx, isHook);
+
+  const usesBailouts = fn.env.config.enableRuntimeBailouts != null;
   const cacheCount = compiled.memoSlotsUsed;
-  if (cacheCount !== 0) {
+  let noMemoThreshold = 0;
+  if (usesBailouts && !isHook) noMemoThreshold = 1;
+  /*
+   * The first memo slot is always the slot for the bailout. If only one memo cache slot
+   * has been used, then there's no memoization
+   */
+
+  if (cacheCount > noMemoThreshold) {
     const preface: Array<t.Statement> = [];
 
     // The import declaration for `useMemoCache` is inserted in the Babel plugin
@@ -307,7 +307,7 @@ function convertParameter(
 class Context {
   env: Environment;
   fnName: string;
-  #nextCacheIndex: number = 0;
+  #nextCacheIndex: number;
   #declarations: Set<IdentifierId> = new Set();
   temp: Temporaries;
   errors: CompilerError = new CompilerError();
@@ -321,6 +321,11 @@ class Context {
     uniqueIdentifiers: Set<string>,
     temporaries: Temporaries | null = null
   ) {
+    this.#nextCacheIndex =
+      env.config.enableRuntimeBailouts == null ||
+      fnName.substring(0, 3) == "use"
+        ? 0
+        : 1; // 0 is reserved for runtime bailout
     this.env = env;
     this.fnName = fnName;
     this.uniqueIdentifiers = uniqueIdentifiers;
@@ -611,13 +616,29 @@ function codegenReactiveScope(
         [t.stringLiteral(MEMO_CACHE_SENTINEL)]
       )
     );
-  } else if (cx.env.config.disableMemoizationForDebugging) {
-    testCondition = t.logicalExpression(
-      "||",
-      testCondition,
-      t.booleanLiteral(true)
-    );
+  } else {
+    if (cx.env.config.disableMemoizationForDebugging) {
+      testCondition = t.logicalExpression(
+        "||",
+        testCondition,
+        t.booleanLiteral(true)
+      );
+    }
+
+    if (cx.env.config.enableRuntimeBailouts != null) {
+      testCondition = t.logicalExpression(
+        "||",
+        testCondition,
+        t.callExpression(
+          t.identifier(
+            cx.env.config.enableRuntimeBailouts.isBailedOut.importSpecifierName
+          ),
+          []
+        )
+      );
+    }
   }
+
   let computationBlock = codegenBlock(cx, block);
 
   const memoBlock = t.blockStatement(cacheLoadStatements);
@@ -1335,19 +1356,109 @@ function createHookGuard(
   before: GuardKind,
   after: GuardKind
 ): t.TryStatement {
-  function createHookGuardImpl(kind: number): t.ExpressionStatement {
-    return t.expressionStatement(
-      t.callExpression(t.identifier(guard.importSpecifierName), [
-        t.numericLiteral(kind),
-      ])
+  return t.tryStatement(
+    t.blockStatement([createHookGuardImpl(guard, before), ...stmts]),
+    null,
+    t.blockStatement([createHookGuardImpl(guard, after)])
+  );
+}
+
+function createHookGuardImpl(
+  guard: ExternalFunction,
+  kind: number
+): t.ExpressionStatement {
+  return t.expressionStatement(
+    t.callExpression(t.identifier(guard.importSpecifierName), [
+      t.numericLiteral(kind),
+    ])
+  );
+}
+
+function createBodyWrapper(
+  stmts: Array<t.Statement>,
+  cx: Context,
+  isHook: boolean
+): Array<t.Statement> {
+  const setup: Array<t.Statement> = [];
+  const teardown: Array<t.Statement> = [];
+
+  const guard = cx.env.config.enableEmitHookGuards;
+  if (guard != null) {
+    setup.push(createHookGuardImpl(guard, GuardKind.PushHookGuard));
+    teardown.push(createHookGuardImpl(guard, GuardKind.PopHookGuard));
+  }
+
+  const runtimeBailouts = cx.env.config.enableRuntimeBailouts;
+  if (runtimeBailouts != null && !isHook) {
+    setup.push(
+      t.expressionStatement(
+        t.callExpression(
+          t.identifier(runtimeBailouts.setBailedOut.importSpecifierName),
+          [
+            t.conditionalExpression(
+              t.binaryExpression(
+                "===",
+                t.memberExpression(
+                  t.identifier(cx.synthesizeName("$")),
+                  t.numericLiteral(0),
+                  true
+                ),
+                t.callExpression(
+                  t.memberExpression(
+                    t.identifier("Symbol"),
+                    t.identifier("for")
+                  ),
+                  [t.stringLiteral(MEMO_CACHE_SENTINEL)]
+                )
+              ),
+              t.booleanLiteral(false),
+              t.memberExpression(
+                t.identifier(cx.synthesizeName("$")),
+                t.numericLiteral(0),
+                true
+              )
+            ),
+          ]
+        )
+      )
+    );
+    teardown.push(
+      t.expressionStatement(
+        t.assignmentExpression(
+          "=",
+          t.memberExpression(
+            t.identifier(cx.synthesizeName("$")),
+            t.numericLiteral(0),
+            true
+          ),
+          t.logicalExpression(
+            "||",
+            t.callExpression(
+              t.identifier(runtimeBailouts.isBailedOut.importSpecifierName),
+              []
+            ),
+            t.memberExpression(
+              t.identifier(cx.synthesizeName("$")),
+              t.numericLiteral(0),
+              true
+            )
+          )
+        )
+      )
     );
   }
 
-  return t.tryStatement(
-    t.blockStatement([createHookGuardImpl(before), ...stmts]),
-    null,
-    t.blockStatement([createHookGuardImpl(after)])
-  );
+  if (teardown.length > 0 || setup.length > 0) {
+    return [
+      t.tryStatement(
+        t.blockStatement([...setup, ...stmts]),
+        null,
+        t.blockStatement(teardown)
+      ),
+    ];
+  } else {
+    return stmts;
+  }
 }
 
 /**

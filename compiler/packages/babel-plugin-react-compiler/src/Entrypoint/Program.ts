@@ -428,6 +428,17 @@ export function compileProgram(
       );
       externalFunctions.push(enableChangeDetectionForDebugging);
     }
+
+    if (options.environment?.enableRuntimeBailouts != null) {
+      const isBailedOut = tryParseExternalFunction(
+        options.environment.enableRuntimeBailouts.isBailedOut
+      );
+      externalFunctions.push(isBailedOut);
+      const setBailedOut = tryParseExternalFunction(
+        options.environment.enableRuntimeBailouts.setBailedOut
+      );
+      externalFunctions.push(setBailedOut);
+    }
   } catch (err) {
     handleError(err, pass, null);
     return;
